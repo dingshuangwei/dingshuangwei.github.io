@@ -1,0 +1,42 @@
+##查看绑定变量（只能显示where条件中的绑定变量）
+
+
+
+
+
+
+查看历史绑定变量
+
+--1、根据峰值时间点获取snap_id
+col BEGIN_INTERVAL_TIME for a30
+col END_INTERVAL_TIME for a30
+set line 150
+select SNAP_ID,BEGIN_INTERVAL_TIME,END_INTERVAL_TIME,SNAP_LEVEL,ERROR_COUNT from DBA_HIST_SNAPSHOT
+where
+end_interval_time >=to_date('2017-1117-0900','YYYY-MMDD-HH24MI') 
+and end_interval_time <=to_date('2017-1122-1500','YYYY-MMDD-HH24MI')
+and instance_number=1 order by snap_id;
+
+
+--2
+select snap_id,dbms_sqltune.extract_bind(bind_data,1)  bind1,
+dbms_sqltune.extract_bind(bind_data,2)  bind2
+from dba_hist_sqlstat
+and sql_id = 'xxx'
+and snap_id >='&snap1' and snap_id<='&snap2'
+order by snap_id
+
+
+
+
+通过V$SQL_MONITOR.BIND_XML列查询绑定信息：
+
+
+
+
+从Errorstack跟踪文件中发现当前bind variable value
+errorstack跟踪文件中中包含CURSORDUMP,也就包含我们想要得到的bind variable value。
+
+
+
+

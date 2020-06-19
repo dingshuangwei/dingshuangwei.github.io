@@ -1,0 +1,49 @@
+抓sql_id的技巧
+如果一个sql很长时间执行不出来
+1、正在执行 
+##查看当前问题sql
+select sid,sql_id,last_call_et,username,module,event from v$session where status ='ACTIVE' and  type != 'BACKGROUND' order by  last_call_et; 
+
+last_call_et
+If the session STATUS is currently ACTIVE, then the value represents the elapsed time (in seconds) since the session has become active.    
+If the session STATUS is currently INACTIVE, then the value represents the elapsed time (in seconds) since the session has become inactive.
+
+
+2、通过具体的sqltext模糊查询
+select sql_id,sql_text from v$sql where sql_text like '%	%'
+
+
+3、快速获取刚刚执行的sql语句的sql_id   
+第一次执行的时候可以看到    
+select * from table(dbms_xplan.display_cursor(null,null,'allstats last'));   
+      
+通过plan_hash_value转换sql_id
+select SQL_ID,PLAN_HASH_VALUE from v$sql_plan where plan_hash_value='3713220770'; 
+
+
+4、常时间不返回结果，再次执行
+set autot trace 
+ctrl c终止
+
+
+
+##plsql
+可以直接通过
+ip:1521/service
+格式连接，而不用tnsnames.ora文件
+
+
+##plsql
+SELECT *FROM TABLE(dbms_xplan.display_cursor('ckyh1gcmuut9p'))
+当执行计划显示的格式不规整的时候，需要调整
+字体-表格-字体-curiao-new
+
+
+
+
+ 
+
+
+
+##随便找个sql_id awr中
+select sql_id from dba_hist_sqlstat where plan_hash_value !=0 and rownum <10;   

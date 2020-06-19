@@ -1,0 +1,16 @@
+手动执行一个快照： 
+exec dbms_workload_repository.create_snapshot;
+ 
+@?/rdbms/admin/awrrpt       本实例 
+@?/rdbms/admin/awrrpti      RAC中选择实例号  
+@?/rdbms/admin/awrddrpt     AWR比对报告 
+@?/rdbms/admin/awrgrpt      RAC 全局AWR 
+
+
+@?/rdbms/admin/ashrpt.sql
+@?/rdbms/admin/addmrpt.sql
+@?/rdbms/admin/awrsqrpt.sql
+
+
+自动生成AWR HTML报告： 
+http://www.oraclebase.com/dba/10g/generate_multiple_awr_reports.sql 

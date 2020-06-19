@@ -1,0 +1,106 @@
+每7天性能基线:RAC集群架构数据库请根据采集节点调整INSTANCE_NUMBER=1或2或3......
+
+等待事件指标
+set pagesize 9999
+select to_char(min(s.sample_time),'YYYY-MM-DD_HH24:MI')||','||
+sum((case when s.wait_class = 'Concurrency' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Other' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Idle' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Scheduler' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Configuration' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Network' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'User I/O' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Administrative' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Application' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Commit' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'System I/O' then 1 else 0 end))||','||
+sum((case when s.wait_class = 'Cluster' then 1 else 0 end))
+from DBA_HIST_ACTIVE_SESS_HISTORY s 
+where 
+s.sample_time >= sysdate -3
+and INSTANCE_NUMBER=1
+group by s.snap_id
+order by s.snap_id;
+
+
+会话数量基线
+SELECT to_char(H.END_INTERVAL_TIME,'YYYY-MM-DD_HH24:MI')||','||s.value FROM DBA_HIST_SYSSTAT s,DBA_HIST_SNAPSHOT H  
+WHERE   s.snap_id=H.snap_id 
+and s.dbid=H.dbid and s.instance_number=H.instance_number 
+and s.STAT_NAME='logons current' 
+and s.instance_number=1
+and  H.END_INTERVAL_TIME >=sysdate -3
+order by s.snap_id,H.END_INTERVAL_TIME;
+
+
+DBtime基线
+SELECT *
+  FROM ( SELECT A.INSTANCE_NUMBER,
+               to_char(B.BEGIN_INTERVAL_TIME,'YYYY-MM-DD_HH24:MI')  BEGIN_TIME,
+               ROUND(VALUE - LAG( VALUE, 1 , '0')
+                     OVER(ORDER BY A.INSTANCE_NUMBER, A.SNAP_ID)) "DB_TIME"
+          FROM (SELECT B.SNAP_ID,
+                       INSTANCE_NUMBER,
+                       SUM(VALUE ) / 1000000 / 60 VALUE
+                  FROM DBA_HIST_SYS_TIME_MODEL B
+                 WHERE B.DBID = (SELECT DBID FROM V$DATABASE)
+                   AND UPPER (B.STAT_NAME) IN UPPER(('DB TIME' ))
+                 GROUP BY B.SNAP_ID, INSTANCE_NUMBER) A,
+               DBA_HIST_SNAPSHOT B
+         WHERE A.SNAP_ID = B.SNAP_ID
+           AND B.DBID = (SELECT DBID FROM V$DATABASE)
+           AND B.INSTANCE_NUMBER = A.INSTANCE_NUMBER)
+ WHERE  INSTANCE_NUMBER=1
+        and BEGIN_TIME>= SYSDATE-3
+ ORDER BY BEGIN_TIME;
+
+
+--1、根据峰值时间点获取snap_id
+col BEGIN_INTERVAL_TIME for a30
+col END_INTERVAL_TIME for a30
+set line 150
+select SNAP_ID,BEGIN_INTERVAL_TIME,END_INTERVAL_TIME,SNAP_LEVEL,ERROR_COUNT from DBA_HIST_SNAPSHOT
+where
+end_interval_time >=to_date('2017-1117-0900','YYYY-MMDD-HH24MI') 
+and end_interval_time <=to_date('2017-1122-1500','YYYY-MMDD-HH24MI')
+and instance_number=1 order by snap_id;
+
+
+--2、根据峰值对应的等待事件类型，查询引起问题的SQL及PROGRAM
+col PROGRAM for a40
+col MACHINE for a30
+col event for a40
+set line 200
+select MACHINE, PROGRAM,sql_id,event,count(*) 
+from DBA_HIST_ACTIVE_SESS_HISTORY s 
+where 
+instance_number=1  and 
+(s.snap_id >='&snap1' and s.snap_id<='&snap2') 
+--and s.wait_class='User I/O' 
+--and s.wait_class='Cluster' 
+--and s.wait_class='Application'
+--and s.wait_class='Concurrency'
+--and s.wait_class='Configuration'
+--and s.wait_class='Commit'
+--and s.wait_class='Other'
+--and s.wait_class='Network'
+--and s.wait_class='Scheduler'
+--and s.wait_class='Administrative'
+--and event ='cursor: pin S wait on X'
+--and event ='db file sequential read'
+--and event='db file scattered read'
+--and event='gc buffer busy'
+--and event='enq: TX - index contention'
+--and event='enq: TX - row lock contention'
+--and event='enq: US - contention'
+--and sql_id='2r6vg1ds92su3'
+group by  MACHINE,PROGRAM,sql_id,event order by count(*) asc;
+
+
+
+--3、根据查询的sql_ID获取sql文本
+set pagesize 9999
+set long 9999
+set line 200
+select SQL_ID,dbms_lob.substr(SQL_TEXT)
+from DBA_HIST_SQLTEXT where SQL_ID='&SQL_ID';

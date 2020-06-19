@@ -1,0 +1,34 @@
+--ASH 3段式第一段，确定活跃会话最多的时间段及SNAP_ID
+select snap_id,instance_number,to_char(sample_time,'yyyymmdd-hh24mi'),count(*) from dba_hist_active_sess_history 
+where sample_time >=to_date('&begintime_yyyymmddhh24','yyyymmddhh24') and sample_time <=to_date('&endtime_yyyymmddhh24','yyyymmddhh24') 
+group by snap_id,instance_number,to_char(sample_time,'yyyymmdd-hh24mi') 
+order by to_char(sample_time,'yyyymmdd-hh24mi');
+
+
+--ASH 3段式第二段，获取特定SNAP及时间段内最多的等待事件 
+select snap_id,instance_number,to_char(sample_time,'yyyymmdd-hh24mi'),count(*),event from dba_hist_active_sess_history 
+where sample_time >=to_date('&begintime_yyyymmddhh24','yyyymmddhh24') and sample_time <=to_date('&endtime_yyyymmddhh24','yyyymmddhh24') and snap_id = &snap_id -- 可明显加快速度 
+group by snap_id,instance_number,to_char(sample_time,'yyyymmdd-hh24mi'),event 
+having count(*) > 2 
+order by to_char(sample_time,'yyyymmdd-hh24mi');
+
+
+--ASH 3段式第三段，获取特定SNAP及时间段内的等待链 
+with ash as (select instance_number,SESSION_ID,event,BLOCKING_SESSION,program , to_char(SAMPLE_TIME,'YYYYMMDD HH24MISS') SAMPLE_TIME,sample_id,blocking_inst_id 
+from dba_hist_active_sess_history 
+where sample_time >=to_date('&begintime_yyyymmddhh24','yyyymmddhh24') and sample_time <=to_date('&endtime_yyyymmddhh24','yyyymmddhh24') ) 
+select SAMPLE_TIME,FINAL_BLK,FINAL_PROGRAM,nvl(FINAL_EVT,'ON CPU') as FINAL_EVT,(LVL2_EVENT) as LVL2_EVENT,count(*) 
+from( select SESSION_ID,SAMPLE_TIME,sys_connect_by_path(SESSION_ID,',') CHAIN, connect_by_root(PROGRAM)as FINAL_PROGRAM,connect_by_root(SESSION_ID)FINAL_BLK, connect_by_root(event) FINAL_EVT,event , case when level=2 then event end as LVL2_EVENT 
+from ash 
+start with BLOCKING_SESSION is null connect by prior SESSION_ID = BLOCKING_SESSION and prior INSTANCE_NUMBER= BLOCKING_INST_ID and sample_id = prior sample_id ) 
+group by FINAL_BLK,FINAL_EVT,SAMPLE_TIME,FINAL_PROGRAM ,LVL2_EVENT 
+having count(*) > 2
+order by SAMPLE_TIME 
+/
+
+
+
+select instance_number,SESSION_ID,event,BLOCKING_SESSION,program , to_char(SAMPLE_TIME,'YYYYMMDD HH24MISS') SAMPLE_TIME,sample_id,blocking_inst_id 
+from dba_hist_active_sess_history 
+where sample_time >=to_date('&begintime_yyyymmddhh24','yyyymmddhh24') and sample_time <=to_date('&endtime_yyyymmddhh24','yyyymmddhh24')
+/

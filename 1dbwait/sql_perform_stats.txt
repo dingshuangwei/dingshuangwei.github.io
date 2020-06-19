@@ -1,0 +1,79 @@
+ash
+--通过以下视图获取历史sql执行计划情况
+v$sql ,v$sqlstats,dba_hist_sqlstat
+sql_id ,
+plan_hash_value,
+elapsed_time/elapsed_time_delta (us微秒) ，
+buffer_get/buffer_get_delta , 
+executions, 执行次数
+rows_processed /rows_processed_delta  返回行数
+
+
+或者使用v$sql
+select sql_id,plan_hash_value ,sum(elapsed_time)/1e6 els  ,sum(elapsed_time)/greatest(sum(executions),1)/1e6 els_per_exec
+,sum(buffer_gets) gets  ,sum(buffer_gets)/greatest(sum(executions),1) get_per_exec  ,sum(executions) execs
+,sum(rows_processed) rowcnt  ,sum(elapsed_time)/greatest(sum(rows_processed),1)/1e6 els_per_row
+,sum(buffer_gets)/greatest(sum(rows_processed),1) get_per_row
+from v$sql  where sql_id = '&sqlid' group by sql_id,plan_hash_value   order by els_per_exec;
+
+或者使用v$sqlstats
+select sql_id,plan_hash_value ,sum(elapsed_time)/1e6 els  ,sum(elapsed_time)/greatest(sum(executions),1)/1e6 els_per_exec
+,sum(buffer_gets) gets  ,sum(buffer_gets)/greatest(sum(executions),1) get_per_exec  ,sum(executions) execs
+,sum(rows_processed) rowcnt  ,sum(elapsed_time)/greatest(sum(rows_processed),1)/1e6 els_per_row
+,sum(buffer_gets)/greatest(sum(rows_processed),1) get_per_row
+from v$sqlstats  where sql_id = '&sqlid' group by sql_id,plan_hash_value   order by els_per_exec;
+
+或者使用dba_hist_sqlstat
+select sql_id,plan_hash_value ,sum(elapsed_time_delta)/1e6 els  ,sum(elapsed_time_delta)/greatest(sum(executions_delta),1)/1e6 els_per_exec
+,sum(buffer_gets_delta) gets  ,sum(buffer_gets_delta)/greatest(sum(executions_delta),1) get_per_exec  ,sum(executions_delta) execs
+,sum(rows_processed_delta) rowcnt  ,sum(elapsed_time_delta)/greatest(sum(rows_processed_delta),1)/1e6 els_per_row
+,sum(buffer_gets_delta)/greatest(sum(rows_processed_delta),1) get_per_row
+from dba_hist_sqlstat  where sql_id = '&sqlid'
+group by sql_id,plan_hash_value  order by els_per_exec;
+
+
+
+
+
+
+
+
+--通过awr数据分析
+set lines 200
+set pages 1000
+col shijian for a12
+col execu_d for 999999
+col bg_d for 9999999999
+col dr_d for 9999999999
+col et_d for 99999999
+col ct_d for 99999999
+col io_time for 999999
+col clus_time for 999999
+col ap_time for 999999
+col cc_time for 999999
+col et_onetime for 999999
+select 
+    to_char(b.END_INTERVAL_TIME,'yyyymmddhh24') shijian,
+    sum(a.EXECUTIONS_DELTA) execu_d,
+    sum(a.BUFFER_GETS_DELTA ) bg_d,
+    sum(a.DISK_READS_DELTA ) dr_d,
+    sum(a.ELAPSED_TIME_DELTA/1000000) et_d,
+    sum(a.CPU_TIME_DELTA/1000000)  ct_d,
+    sum(IOWAIT_DELTA/1000000) io_time,
+    sum(CLWAIT_DELTA/1000000) clus_time,
+    sum(APWAIT_DELTA/1000000) ap_time,
+    sum(ccwait_delta/1000000) cc_time,
+    decode(sum(a.EXECUTIONS_DELTA),0,sum(a.ELAPSED_TIME_DELTA/1000000),sum(a.ELAPSED_TIME_DELTA/1000000)/sum(a.EXECUTIONS_DELTA)) et_onetime
+from     
+    dba_hist_sqlstat a,
+    dba_hist_snapshot b
+where 
+    a.SNAP_ID =b.SNAP_ID
+and a.INSTANCE_NUMBER=b.INSTANCE_NUMBER
+and a.sql_id='&sql_id' 
+group by 
+    to_char(b.END_INTERVAL_TIME,'yyyymmddhh24')
+ order by 1;
+undefine sql_id;
+
+

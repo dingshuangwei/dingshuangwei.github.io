@@ -1,0 +1,16 @@
+笛卡尔联接—MERGE JOIN CARTESIAN
+
+set lines 300 pages 300
+select SQL_ID,CHILD_NUMBER,PLAN_HASH_VALUE,operation,OPTIONS,TIMESTAMP  from v$sql_plan  where options like '%CARTESIAN%' ;
+
+
+set lines 300 pages 300
+col OPTIONS for a20
+col operation for a20
+select b.username,a.SQL_ID,a.PLAN_HASH_VALUE,a.operation,a.OPTIONS,a.TIMESTAMP  from v$sql_plan a, v$session b  where a.options like '%CARTESIAN%' and a.sql_id=b.sql_id ;
+
+select sql_fulltext from v$sql where sql_id='9s60m5qrzs7fq';
+
+
+
+1、统计信息不准确而产生的merge join cartesian

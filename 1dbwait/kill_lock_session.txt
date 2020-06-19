@@ -1,0 +1,275 @@
+
+！！！一定要登陆到造成锁的实例上执行，切记
+
+杀进程
+alter system kill session 'sid,serial#' immediate;
+
+
+
+
+
+如果上面无法杀会话，可以直接杀操作系统进程
+col machine for a20
+col program for a30
+col spid for  a10
+col USERNAME for a10
+select a.inst_id,a.spid,b.sid,b.serial#,b.USERNAME,b.program,b.machine,b.osuser,b.sql_id  from gv$process a,gv$session b where a.addr=b.paddr and a.inst_id=b.inst_id and b.inst_id ='&inst_id' and b.sid='&sid';
+
+
+
+
+在kill -9 前确定 process与session 一一对应
+
+
+
+
+
+select  /*+ no_merge(a) no_merge(b)  */
+(select  username  from  v$session  where  sid=a.sid) blocker,a.sid,'is  blocking',
+(select  username  from  v$session  where  sid=b.sid )blockee,b.sid
+from  v$lock a, v$lock b
+where  a.block=1  and  b.request>0
+and  a.id1=b.id1
+and  a.id2=b.id2
+
+
+
+利用ash
+关注top objects 栏目，可以看到哪个对象造成的锁，也就是锁的原因
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+***********************************************testing******************************************
+create user aa identified by 5963187;
+grant dba to aa;
+create user bb identified by 5963187;
+grant dba to bb;
+select sid from v$mystat where rownum <2;
+
+session1:  9
+create table  cs1 as select * from dba_users;
+select * from aa.cs1 where user_id=59;
+update cs1 set USERNAME='dingshu' where user_id=59;
+update cs1 set USERNAME='dingshu222' where user_id=5;
+no commit;
+
+session2: 200
+delete from aa.cs1 where rownum >8
+select *from aa.cs1 where USERNAME='dingshu'
+update aa.cs1 set USERNAME='dingshu222' where user_id=5;=====修改不同行，不会受影响
+update aa.cs1 set USERNAME='dingshu666' where user_id=59;
+hang住
+
+************************************************************************************************
+11111111111111111111111111111111111111111111111111111111111111111111111111111111111111111111
+、查锁
+---- lock------from other node ----dingshuangwei--
+select s1.username || '@' || s1.machine|| ' ( INST='|| l1.inst_id ||' SID=' || s1.sid ||' SERIAL#=' || s1.SERIAL# || ' )  is blocking '          
+       || s2.username || '@' || s2.machine || ' ( INST='|| l2.inst_id ||' SID=' || s2.sid ||' SERIAL#=' || s2.SERIAL# || ' ) ' || 'ctime=' || l1.ctime || 'miao' AS blocking_status 
+  from gv$lock l1, gv$session s1, gv$lock l2, gv$session s2
+ where s1.sid=l1.sid and s2.sid=l2.sid                     
+   and l1.BLOCK>0 and l2.request > 0                      
+   and l1.id1 = l2.id1                                     
+   and l2.id2 = l2.id2 ;      
+   
+
+
+-----Enmo ---zhangjicheng----
+select s1.username || '@' || s1.machine|| ' ( INST='|| l1.inst_id ||' SID=' || s1.sid || ' )  is blocking '          
+       || s2.username || '@' || s2.machine || ' ( INST='|| l2.inst_id ||' SID=' || s2.sid || ' ) ' || 'ctime=' || l1.ctime || 'miao' AS blocking_status 
+  from gv$lock l1, gv$session s1, gv$lock l2, gv$session s2
+ where s1.sid=l1.sid and s2.sid=l2.sid                     
+   and l1.BLOCK>0 and l2.request > 0                      
+   and l1.id1 = l2.id1                                     
+   and l2.id2 = l2.id2 ;      
+
+
+
+
+
+
+222222222222222222222222222222222222222222222222222222222222222222222222222222222222222
+、查session
+col sid for 999999
+col USERNAME for a10
+col MACHINE for a15
+col PROGRAM for a40
+col MODULE for a20
+select  inst_id,SID, SERIAL# , SQL_ID, PREV_SQL_ID,PREV_HASH_VALUE, PADDR, 
+USERNAME,MACHINE, MODULE,PROGRAM from gv$session where inst_id='&inst' and sid='&sid';
+##这里发现sql_id为空值，怀疑未提交
+
+
+--kill--------------一定要登陆到造成锁的实例上执行，切记---------------------
+select a.inst_id,a.spid,a.username,a.addr,b.sid,b.program,b.module  from gv$process a,gv$session b where a.addr=b.paddr and a.inst_id=b.inst_id and b.inst_id ='&inst_id' and b.sid='&sid';
+
+
+在kill -9 前确定 process与session 一一对应
+select a.inst_id,a.spid,a.username,a.addr,b.sid,b.program,b.module  from gv$process a,gv$session b where a.addr=b.paddr and a.inst_id=b.inst_id and b.inst_id ='&inst_id' and a.spid='&spid';
+
+alter system kill session 'sid,serial#' immediate;
+alter system kill session '72,55' immediate;
+alter system kill session '191,5' immediate;
+
+
+window 环境
+orakill <sid> <spid>
+orakill ORCL 2760
+
+
+
+333333333333333333333333333333333333333333333333333333333333333333333333333333333333333
+查sql
+---sqltext by sid--------------------------------------
+set linesize 200 pagesize 1000
+select sql_text
+  from gv$session a, gv$sqltext b
+ where  a.inst_id = '&inst_id'
+ and a.inst_id =b.inst_id
+ and a.sql_id = b.sql_id
+   and a.sid = &sid
+ order by b.piece  ;
+ 
+ ------在当前节点查询----------------------
+col sql_text for a65
+set pagesize 200
+SELECT   /*+ ORDERED */ sql_id,hash_value,sql_text FROM v$sqltext a WHERE (a.hash_value, a.address) IN (SELECT DECODE (sql_hash_value,0, prev_hash_value,sql_hash_value),DECODE (sql_hash_value, 0, prev_sql_addr, sql_address) FROM v$session b WHERE b.sid in (&sid)) ORDER BY hash_value,piece ASC;
+ 
+ 
+---Sqltext---by sqlid/hash value----------------------
+select sql_id,SQL_TEXT,SQL_FULLTEXT from gv$sqlarea where sql_id = '&sql_id';
+select sql_id,SQL_TEXT,SQL_FULLTEXT from gv$sqlarea where hash_value = '&hash_value';
+
+44444444444444444444444444444444444444444444444444444444444444444444444444444444444444444444
+、查看等待事件
+这里出现一个问题，通过以上方法抓sql_id为空，无法找到具体sqltext
+转变思路从等待事件里查找
+
+set linesize 150 pages 999col EVENT for a40
+col WAIT_CLASS for a15
+select inst_id, event#, event,WAIT_CLASS, count(*)  from gv$session where wait_class# <> 6 group by inst_id, 
+event#, event,WAIT_CLASS order by 1,5 desc;
+
+set line 300 pages 150col username for a10
+col program for a35
+col event for a30
+col MACHINE for a15
+col OSUSER for a10
+col status for a8
+select inst_id,sid,process,username,OSUSER,program,MACHINE,module,sql_id,event,status,BLOCKING_SESSION from gv$session 
+where inst_id='&inst_id' and event#='&event'
+order by program, sql_id;
+但这里只能查到等待的事务，而无法确定造成等待事务
+
+
+5、、查看未提交事务
+--查看未提交的事务
+select s.inst_id, s.sid, s.serial#, s.username,s.osuser, s.program, s.event, to_char(s.LOGON_TIME,'yyyymmdd-hh24:mi:ss') ,to_char(t.START_DATE,'yyyymmdd-hh24:mi:ss'),s.last_call_et as last_ct,s.BLOCKING_SESSION  block_sess, s.status, (select q.SQL_TEXT from  v$sql q
+ where q.LAST_ACTIVE_TIME=t.START_DATE and rownum<=1) as SQL_TEXT  
+from gv$session s, gv$transaction t 
+where s.sADDR = t.SES_ADDR ;
+
+
+
+
+******************************************************以下适用于同一节点的lock************************************
+
+set linesize 200 pagesize 1000
+select a.inst_id,
+       a.sid,
+       a.type,
+       a.lmode,
+       a.request,
+       a.id1,
+       a.id2,
+       a.block,
+       decode(a.request, 0, 'Holder', 'Waiter') description,
+       a.ctime,
+       a.block
+  from gv$lock a, (select id1, id2 from gv$lock b where block = 1) b
+ where a.id1 = b.id1
+   and a.id2 = b.id2
+ order by a.id1,a.id2,description;
+ 
+-----sessioninfo-by--SID------------------------------------
+col sid for 999999
+col USERNAME for a10
+col MACHINE for a15
+col PROGRAM for a40
+col MODULE for a20
+select  SID, SERIAL# , SQL_ID, PREV_SQL_ID,PREV_HASH_VALUE, PADDR, 
+USERNAME,MACHINE, MODULE,PROGRAM from v$session where sid='&sid';
+##不同节点可能sid相同,所以，一定要确定好到底是哪个实例
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+
+----------确定被被锁定的对象----------------
+
+
+select *from v$locked_object;
+
+
+--locked objectID--------dsw---------
+select  sid,type,id1 object_idd,id2 from  gv$lock where  type ='TM' and inst_id='&inst_id' and sid ='&sid';
+
+--locked objectname------dsw-------
+col OWNER for a10      
+col OBJECT_NAME   for a20
+select OWNER,OBJECT_NAME,OBJECT_TYPE from dba_objects where object_id = '&object_id';
+
+
+
+
+
+
+----jiexi-----------------------------------
+当发出一个DML命令后会话获取一个3号的TM锁，和一个针对特定行的6号TX锁。
+v$lock
+request:REQUEST NUMBER Lock mode in which the process requests the lock
+3：BLOCK NUMBER Indicates whether the lock in question is blocking other processes. The possible values are:  
+0 - The lock is not blocking any other processes 
+1 - The lock is blocking other processes 
+2 - The lock is not blocking any blocked processes on the local node, but it may or may not be blocking processes on remote nodes. This value is used only in Oracle Real Application Clusters (Oracle RAC) configurations (not in single instance configurations).
+TM锁  ID1表示被锁定表的object_id 
+TX锁   ID1与ID2确定回滚段的位置
+
+
+
+                      
+   
+   
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

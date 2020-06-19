@@ -1,0 +1,44 @@
+cat dbwait.sh
+
+vi dbwait.sh
+
+while [ 1 ] 
+do
+echo "SESSION EVENT WAIT LIST"
+sqlplus -s "/as sysdba"  <<EOF
+set pagesize 2000
+set linesize 900
+col event format a26
+col program format a30
+col sess_sql_hash format a18
+col username for a10
+col client for a32
+col logon_time for a11
+select /*+ RULE */ substr(b.event,1,25) event,substr(b.program,1,30) program,
+b.sid||':'||decode(sql_hash_value,'0',prev_hash_value,sql_hash_value) sess_sql_hash,
+b.username,substr(b.osuser||'@'||b.machine||'@'||b.process||'@'||c.spid,1,35) client,
+to_char(b.logon_time,'mm-dd hh24:mi') logon_time,
+LAST_CALL_ET elapse_time
+from v\$session b,v\$process c
+where b.paddr=c.addr
+and b.event not like '%SQL%'
+and b.event not like '%message%'
+and b.event not like '%job%'
+and b.event not like '%time%'
+and b.event not like '%Stream%'
+and b.event not like '%DIAG%'
+and b.event not like '%PX%'
+and b.wait_class !='Idle'
+/
+exit
+EOF
+sleep 2
+done
+
+
+
+chown a+x dbwait.sh
+
+Ö´ÐÐ./dbwait.sh
+
+

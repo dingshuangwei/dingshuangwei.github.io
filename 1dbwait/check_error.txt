@@ -1,0 +1,108 @@
+﻿1、快速状态定位
+1、查看集群资源状态
+crs_stat -t -v
+crsctl stat res
+crsctl stat res -init
+查集群日志
+cd /u01/app/11.2.0/grid/log/rac1/
+tail -n 200 alertrac1.log
+
+
+
+查监听
+ps -ef |grep tns
+lsnrctl status LISTENER_SCAN1
+srvctl status scan_listener
+srvclt status scan
+show parameter remote
+show parameter local
+查监听日志
+
+
+查asm
+ps -ef |grep asm
+查是否mount
+查磁盘属性
+查oracle权限asmadmin
+查asm日志
+tail -f 200 /u01/app/grid/diag/asm/+asm/+ASM/trace/alert_+ASM.log
+
+
+
+2、adrci
+adrci
+show homes 
+set homes 
+show alert -tail 500
+show alert -tail 50 -f 动态监控
+show alert -tail 2000 -p "message_text like '%ORA-%'"
+
+show incident
+show incident -p "problem_key like '%600%'"
+show incident -mode detail -p "incident_id=具体号码"
+
+
+show trace -i 具体incident_id
+
+
+
+有问题第一时间定位集群日志目录grid和oracle用户有自己独立的目录体系
+<ADR_HOME>=<ADR_BASE>/diag/<product_type>/<db_unique_name>/<oracle_sid>
+alert在trace下
+理解一个概念，一个问题多次意外  问题problem 意外incident
+incident 就是一个几点几分 发生了一个ora-01555
+保留策略：
+dump 一个月
+incident metadata y一年
+trace文件格式 <sid>_ora_<pid>.trc
+
+
+3、alert日志
+tail -200f /u01/app/11.2.0/grid/log/rac1/alertrac1.log |
+grep -E 'ORA-|Errors|Deadlock|CHANGE TRACKING ERROR|checkpoint not complete|Starting ORACLE instance|Shutting down instance|^IPC|fail'
+
+grep -C 5  显示上下行
+
+grep -n 显示行号
+
+
+
+
+4、DBA_OUTSTANDING_ALERTS
+Oracle 10g通过DBA_OUTSTANDING_ALERTS视图记录了数据库活动警报信息，这些信息直到警告清除或复位才会从这个视图中消失：
+set lines 300 pages 300
+col OBJECT_NAME for a30
+col OBJECT_TYPE for a15
+col REASON for a50
+col SUGGESTED_ACTION for a50
+select OBJECT_NAME,OBJECT_TYPE,REASON,SUGGESTED_ACTION  from DBA_OUTSTANDING_ALERTS;  
+
+
+
+
+第三部实例状态检查
+1、告警日志
+ps：
+vi .bash_profile
+export ALERT_HOME=/u01/app/oracle/diag/rdbms/newrac/newrac1/trace
+stty erase ^H
+alias sqlplus='sqlplus / as sysdba'
+alias alert_log='tail -200f /u01/app/oracle/diag/rdbms/newrac/newrac1/trace/alert_newrac1.log'
+
+2、实例状态
+set linesize 150 pagesize 999
+col EVENT for a40
+col HOST_NAME for a20
+select INSTANCE_NAME,HOST_NAME,VERSION,STARTUP_TIME,STATUS from gv$instance;
+
+3、数据库状态
+SELECT DATABASE_ROLE, DB_UNIQUE_NAME, OPEN_MODE,PROTECTION_MODE, PROTECTION_LEVEL, SWITCHOVER_STATUS FROM V$DATABASE;
+
+4、连接数
+select inst_id, count(*) from gv$session group by inst_id;
+
+
+                        
+
+
+

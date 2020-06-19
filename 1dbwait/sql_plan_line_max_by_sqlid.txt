@@ -1,0 +1,33 @@
+ 
+快速定位执行计划的瓶颈
+
+ 
+v$active_session_history  -- SQL_PLAN_LINE_ID , sql_id , SQL_PLAN_HASH_VALUE
+dba_hist_active_sess_history -- SQL_PLAN_LINE_ID , sql_id , SQL_PLAN_HASH_VALUE
+
+
+
+--ash
+select SQL_PLAN_LINE_ID,count(*) SUM_CISHU,SQL_PLAN_HASH_VALUE,sql_id
+from gv$active_session_history
+where sql_id = '&sqlid'
+group by SQL_PLAN_HASH_VALUE,SQL_PLAN_LINE_ID,sql_id
+order by SUM_CISHU;
+
+
+
+--awr
+select SQL_PLAN_LINE_ID,count(*),SQL_PLAN_HASH_VALUE,sql_id
+from dba_hist_active_sess_history h ,dba_hist_sqlstat st
+where st.sql_id = '&sqlid' 
+and h.sql_id = st.sql_id 
+and st.snap_id = h.snap_id
+and st.dbid = h.dbid
+and st.instance_number = h.instance_number
+group by SQL_PLAN_HASH_VALUE,SQL_PLAN_LINE_ID,sql_id;
+
+
+select SQL_PLAN_LINE_ID,count(*),SQL_PLAN_HASH_VALUE,sql_id
+from dba_hist_active_sess_history
+where sql_id = '&sqlid'
+group by SQL_PLAN_HASH_VALUE,SQL_PLAN_LINE_ID,sql_id;

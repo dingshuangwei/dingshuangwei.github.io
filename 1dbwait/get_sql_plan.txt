@@ -1,0 +1,163 @@
+小技巧
+模拟到另外一个用户上执行sql
+alter session set current_schema=ce108;  这个时候依然是sys用户，可以使用set autot trace 抓执行计划
+select count(*) from ceshi where a is not null; 就可以不带用户名称
+--select count(*) from ce108.ceshi where a is not null;
+
+
+
+
+方案1：
+--------------------------------------------------------------------------------------------
+该方法是从共享池里得到
+select  * from table(dbms_xplan.display_cursor('&sql_id')); 
+
+
+--------------------------------------------------------------------------------------------
+生成最详细执行计划
+set autotrace off 
+alter session set statistics_level=all;  或者添加hint /*+ gather_plan_statistics */ 
+SQL...
+select * from table(dbms_xplan.display_cursor(null,null,'ADVANCED  ALLSTATS LAST PEEKED_BINDS'));
+
+select * from table(dbms_xplan.display_cursor(null,null,'allstats'));
+
+
+可以看到具体访问的次数
+select * from table(dbms_xplan.display_cursor('sql_id',format=>'iostats last'));
+select * from table(dbms_xplan.display_cursor(null,null,format=>'iostats last'));
+
+
+
+显示使用的绑定变量
+select * from table(dbms_xplan.display_cursor(null,null,format=>'PEEKED_BINDS'));
+执行计划底下会显示使用的绑定变量
+Peeked Binds (identified by position):
+--------------------------------------
+PLAN_TABLE_OUTPUT
+--------------------------------------------------------------------------------
+1 - :A (NUMBER): 8
+
+
+
+
+--------------------------------------------------------------------------------------------
+
+set autotrace traceonly  不显示结果，防止打屏
+sql..
+set autotrace off  
+
+
+--------------------------------------------------------------------------------------------
+
+方案2
+--------------------------------------------------------------------------------------------
+步骤1：@?/rdbms/admin/awrsqrpt.sql
+步骤2：选择你要的断点（begin snap 和end snap)
+步骤3：输入你的sql_id    
+
+--------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+explain plan for获取执行计划 
+
+set linesize 1000
+set pagesize 2000
+explain plan for
+SQL...;
+select * from table(dbms_xplan.display());
+
+
+## 对于dml语句，采用不执行，就可以查看出执行计划
+
+explain plan for delete from ggg;
+
+
+## 对于dml语句，查看执行计划采用如下模式
+SAVEPOINT a;  
+explain plan for delete from ggg;
+select * from table(dbms_xplan.display());
+
+有异常可以及时恢复
+ROLLBACK TO SAVEPOINT a;
+
+
+
+
+
+
+
+10046 trace 获取执行计划
+oradebug setmypid
+oradebug unlimit
+oradebug event 10046 trace name context forever,level 12
+sql
+oradebug event 10046 trace name context off
+oradebug tracefile_name
+tkprof /home/db/oracle/diag/rdbms/aihh/aihh1/trace/aihh1_ora_62712.trc   /home/oracle/ding10046.trc sys=no sort=prsela,exeela,fchela
+
+
+
+
+
+--------------------------------------------------------------------------------------------
+sqltrace 
+alter session sql_trace=true;          
+sql
+alter session sql_trace=false;  
+   
+tkprof trc文件 目标文件 
+    
+   
+---------------------------------------------------------------------------------------------     
+   
+
+
+
+
+
+
+
+
+###罗海雄修改sql小技巧
+select * from v$versionnn;
+c/versionnn/version
+/
+
+
+
+
+
+         
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

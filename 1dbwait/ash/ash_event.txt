@@ -1,0 +1,124 @@
+
+通过ash确定等待事件的变化情况
+
+
+--指定具体时间
+set lines 300 pages 300
+col samp_time for a20
+col event for a30
+select trunc(sample_time,'mi') samp_time,event,count(1)
+from v$active_session_history a
+where a.sample_time > to_date('20190114 13:30:00','yyyymmdd hh24:mi:ss')
+and a.sample_time < to_date('20190114 14:00:00','yyyymmdd hh24:mi:ss')
+and a.event is not null
+and a.WAIT_CLASS_ID<>6
+group by trunc(sample_time,'mi'),event 
+order by 1,3 
+
+--指定时间段  10分钟之前的等待
+set lines 300 pages 300
+col samp_time for a20
+col event for a30
+select trunc(sample_time,'mi'),event,count(1)
+from v$active_session_history a
+where a.sample_time > sysdate-10/144
+and a.event is not null
+and a.WAIT_CLASS_ID<>6
+group by trunc(sample_time,'mi'),event 
+having count(1)>2
+order by 1,3; 
+
+
+
+
+set lines 300 pages 300
+col samp_time for a20
+col event for a30
+select trunc(sample_time,'mi'),event,count(1)
+from gv$active_session_history a
+where a.sample_time > sysdate-1/144
+and a.event is not null
+and a.WAIT_CLASS_ID<>6
+group by trunc(sample_time,'mi'),event 
+having count(1)>2
+order by 1,3; 
+
+--一个特定sid之前执行过的sql
+set lines 300 pages 300
+col samp_time for a20
+select trunc(sample_time,'mi'),SESSION_ID,SESSION_SERIAL#,SQL_ID
+from v$active_session_history a
+where a.sample_time > sysdate-10/144
+and SESSION_ID='&sid'
+order by trunc(sample_time,'mi');
+
+
+##dba_hist_active_sess_history
+set lines 300 pages 300
+col samp_time for a20
+col event for a30
+select trunc(sample_time,'mi') samp_time,event,count(1)
+from dba_hist_active_sess_history a
+where a.sample_time > to_date('20190114 13:30:00','yyyymmdd hh24:mi:ss')
+and a.sample_time < to_date('20190114 14:00:00','yyyymmdd hh24:mi:ss')
+and a.event is not null
+and a.WAIT_CLASS_ID<>6
+group by trunc(sample_time,'mi'),event 
+order by 1,3 
+
+
+
+
+set lines 300 pages 300
+col samp_time for a20
+col event for a30
+select trunc(sample_time,'mi') samp_time,event,count(1)
+from dba_hist_active_sess_history a
+where a.sample_time > sysdate-1/144
+and a.event is not null
+and a.WAIT_CLASS_ID<>6
+group by trunc(sample_time,'mi'),event 
+order by 1,3 
+
+
+
+3、源头
+
+@@v$active_session_history  EDITOR=丁双玮
+set lines 300 pages 300
+col SID_CHAIN for a30
+col ENENT_CHAIN for a30
+with ash as (select QC_INSTANCE_ID,SESSION_ID, event, BLOCKING_SESSION,program,
+to_char(SAMPLE_TIME,'YYYYMMDD HH24MISS') SAMPLE_TIME, sample_id, blocking_inst_id from 
+v$active_session_history where
+sample_time > sysdate-1/1440)
+select * from (
+select SAMPLE_TIME, BLOCKING_SESSION final_block, sys_connect_by_path(session_id,',') SID_CHAIN,
+sys_connect_by_path(event,',') ENENT_CHAIN
+from ash start with session_id is not null
+connect by prior BLOCKING_SESSION=session_id and
+prior QC_INSTANCE_ID= BLOCKING_INST_ID and sample_id = prior sample_id) a where 
+instr(SID_CHAIN, final_block)=0 and not exists
+(select 1 from ash b where a.final_block=b.session_id and b.BLOCKING_SESSION is not null)
+order by SAMPLE_TIME;
+
+
+
+@@dba_hist_active_sess_history  EDITOR=曾令军
+set lines 300 pages 300
+col SID_CHAIN for a30
+col ENENT_CHAIN for a30
+with ash as (select instance_number, SESSION_ID, event, BLOCKING_SESSION,program,
+to_char(SAMPLE_TIME,'YYYYMMDD HH24MISS') SAMPLE_TIME, sample_id, blocking_inst_id from 
+dba_hist_active_sess_history where
+SAMPLE_TIME > to_date('20191009 15:30:00','yyyymmdd hh24:mi:ss')
+and SAMPLE_TIME < to_date('20191009 16:00:00','yyyymmdd hh24:mi:ss'))
+select * from (
+select SAMPLE_TIME, BLOCKING_SESSION final_block, sys_connect_by_path(session_id,',') SID_CHAIN,
+sys_connect_by_path(event,',') ENENT_CHAIN
+from ash start with session_id is not null
+connect by prior BLOCKING_SESSION=session_id and
+prior instance_number= BLOCKING_INST_ID and sample_id = prior sample_id) a where 
+instr(SID_CHAIN, final_block)=0 and not exists
+(select 1 from ash b where a.final_block=b.session_id and b.BLOCKING_SESSION is not null)
+order by SAMPLE_TIME

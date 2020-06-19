@@ -1,0 +1,54 @@
+DECLARE  
+  -- Adjust before use.  
+  l_snap_start       NUMBER ;  
+  l_snap_end         NUMBER ;
+  l_interval_hours   NUMBER :=4;  
+  l_dir              VARCHAR2(50) := 'AWR_REPORTS_DIR';  
+    
+  l_last_snap        NUMBER := NULL;  
+  l_dbid             v$database.dbid%TYPE;  
+  l_instance_number  v$instance.instance_number%TYPE; 
+  v_instance_name    v$instance.instance_name%TYPE; 
+  v_host_name        varchar2(24) ;  
+  l_file             UTL_FILE.file_type;  
+  l_file_name        VARCHAR(100); 
+  d_startup_time     date ;
+  
+BEGIN  
+   
+  SELECT dbid  
+  INTO   l_dbid  
+  FROM   v$database;  
+  
+  
+  SELECT instance_number ,startup_time ,instance_name
+  INTO   l_instance_number , d_startup_time ,v_instance_name
+  FROM   v$instance;
+  
+  select sys_context('userenv','host') into v_host_name from dual; 
+  
+  
+  select min(snap_id) into l_snap_start 
+    from dba_hist_snapshot
+   where end_interval_time > d_startup_time
+     and end_interval_time > sysdate - l_interval_hours / 24 ;
+     
+  select max(snap_id) into l_snap_end
+    from dba_hist_snapshot
+   where end_interval_time > d_startup_time
+     and end_interval_time < sysdate  ;
+     
+     
+      
+      l_file := UTL_FILE.fopen(l_dir, 'awr_'|| v_host_name ||'_'||v_instance_name||'_' || l_snap_start || '_' || l_snap_end || '.html', 'w', 32767);  
+        
+      FOR cur_rep IN (SELECT output  
+                      FROM   TABLE(DBMS_WORKLOAD_REPOSITORY.awr_report_html(l_dbid, l_instance_number, l_snap_start, l_snap_end)))  
+      LOOP  
+        UTL_FILE.put_line(l_file, cur_rep.output);  
+      END LOOP;  
+      UTL_FILE.fclose(l_file);      
+END;  
+/  
+
+

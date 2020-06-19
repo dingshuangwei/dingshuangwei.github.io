@@ -1,0 +1,202 @@
+************************************************************************************************
+
+10046 告诉我们SQL(执行计划)运行地如何， 10053告诉我们 优化器为什么为这个SQL选择某个执行计划。
+
+10046
+1、trace帮助我们解析 一条/多条SQL、PL/SQL语句的运行状态 ，这些状态包括 ：Parse/Fetch/Execute三个阶段中遇到的等待事件、消耗的物理和逻辑读、CPU时间、执行计划等等
+2、分析 一些 DDL维护命令的内部工作原理， RMAN、Data Pump Expdp/Impdp等工具的缓慢问题等， 是研究 oracle 数据库原理的 居家旅行必备良品。
+
+10053
+1、 10053 可以作为我们解析 优化器为什么选择某个执行计划，其中的理由的辅助工具
+
+************************************************************************************************
+
+
+
+
+1、10046 trace 获取执行计划
+oradebug setmypid
+oradebug unlimit
+oradebug event 10046 trace name context forever,level 12
+sql
+oradebug event 10046 trace name context off
+oradebug tracefile_name
+oradebug close_trace;
+tkprof /u01/app/oracle/diag/rdbms/d1/d1/trace/d1_ora_3475.trc   /home/oracle/ding1115.trc sys=no sort=prsela,exeela,fchela
+
+2、10046监控oracle进程
+oradebug setospid 3260--v$Process.spid
+oradebug event 10046 trace name context forever,level 4
+oradebug event 10046 trace name context off
+tkprof /u01/oracle/diag/rdbms/neal/neal/trace/neal_ora_18691.trc /tmp/neal_ora_18691.trc
+
+
+10046详解参考：http://blog.itpub.net/133735/viewspace-769332/
+
+
+内容详解：
+
+######PARSING
+PARSING IN CURSOR #139716037603136 len=33 dep=0 uid=0 oct=3 lid=0 tim=1573783366538708 hv=2111458147 ad='a94615a8' sqlid='4r685upyxnkv3'
+select count(*) from dba_segments
+END OF STMT
+PARSE #139716037603136:c=81988,e=191609,p=1,cr=61,cu=0,mis=1,r=0,dep=0,og=1,plh=881865853,tim=1573783366538707
+
+解析  
+PARSING IN CURSOR #20 ，这里的#20是游标号， 这个游标号非常重要， 后面的 FETCH 、WAIT、EXECUTE、PARSE 都通过这个游标号和前面的SQL联系起来。
+
+解析在跟踪文件中通常通过两个相邻的条目表示  第一个是PARSING IN CURSOR,第二个是PARSE
+len=33 文本长度
+uid=0 USERID
+hv= sql hash value  SELECT HASH_VALUE,SQL_ID FROM V$SQL WHERE SQL_ID='4r685upyxnkv3';
+并不是PLAN_HASH_VALUE 
+ad = sql address
+oct=3 v$sql COMMAND_TYPE  select SQL_FULLTEXT,COMMAND_TYPE from v$sql where COMMAND_TYPE=3;
+
+
+######EXEC
+EXEC #139716037603136:c=0,e=33,p=0,cr=0,cu=0,mis=0,r=0,dep=0,og=1,plh=881865853,tim=1573783366538791
+
+c=cpu
+e=elapse time 
+p=physical read  
+cr =consistant read
+cu=current use block 当前处理的数据块
+mis  0 为软解析，1 为硬解析
+r   被处理的行
+dep  调用深度
+og  all rows 默认均为1
+plh  v$sql_plan. plan_hash_value
+tim 时间戳
+
+
+######WAIT等待事件和WAIT条目格式
+WAIT #11: nam=\'db file sequential read\' ela= 253 file#=1 block#=420 blocks=1 obj#=355 tim=1327923455671258
+ela 微妙
+
+
+
+######FETCH
+FETCH #139716037603136:c=51992,e=51193,p=0,cr=16511,cu=0,mis=0,r=1,dep=0,og=1,plh=881865853,tim=1573783366590027
+
+
+######STAT 执行计划，统计信息与STAT条目格式
+cnt 被处理的行数
+cr 一致读
+pr 物理读
+pw 物理写
+car 基数
+cost 成本
+size 数据量
+
+
+STAT #139716037603136 id=1 cnt=1 pid=0 pos=1 obj=0 op='SORT AGGREGATE (cr=16511 pr=0 pw=0 time=51191 us)'
+STAT #139716037603136 id=2 cnt=5831 pid=1 pos=1 obj=4970 op='VIEW  SYS_DBA_SEGS (cr=16511 pr=0 pw=0 time=35839 us cost=1551 size=0 card=5146)'
+STAT #139716037603136 id=3 cnt=5831 pid=2 pos=1 obj=0 op='UNION-ALL  (cr=16511 pr=0 pw=0 time=34952 us)'
+STAT #139716037603136 id=4 cnt=5820 pid=3 pos=1 obj=0 op='HASH JOIN RIGHT OUTER (cr=10581 pr=0 pw=0 time=33291 us cost=1510 size=349006 card=3598)'
+STAT #139716037603136 id=5 cnt=78 pid=4 pos=1 obj=47 op='INDEX FULL SCAN I_USER2 (cr=1 pr=0 pw=0 time=19 us cost=1 size=288 card=72)'
+STAT #139716037603136 id=6 cnt=5820 pid=4 pos=2 obj=0 op='HASH JOIN  (cr=10580 pr=0 pw=0 time=31070 us cost=1509 size=334614 card=3598)'
+
+######绑定变量和BINDS条目格式
+BINDS #9:
+kkscoacd
+ Bind#0
+  oacdty=02 mxl=22(22) mxlc=00 mal=00 scl=00 pre=00
+  oacflg=08 fl2=0001 frm=00 csi=00 siz=24 off=0
+  kxsbbbfp=b7ee5a5c  bln=22  avl=02  flg=05
+  value=20
+  
+
+
+
+######tkprof
+********************************************************************************
+count    = number of times OCI procedure was executed
+cpu      = cpu time in seconds executing 
+elapsed  = elapsed time in seconds executing
+disk     = number of physical reads of buffers from disk
+query    = number of buffers gotten for consistent read
+current  = number of buffers gotten in current mode (usually for update)
+rows     = number of rows processed by the fetch or execute call
+********************************************************************************
+
+The following statement encountered a error during parse:
+
+select count(*) dba_users 
+
+Error encountered: ORA-00923
+
+
+
+********************************************************************************
+
+OVERALL TOTALS FOR ALL NON-RECURSIVE STATEMENTS
+
+call     count       cpu    elapsed       disk      query    current        rows
+------- ------  -------- ---------- ---------- ---------- ----------  ----------
+Parse        1      0.01       0.01          0          0          0           0
+Execute      1      0.00       0.00          0          0          0           0
+Fetch        2      0.00       0.03          4         31          0           1
+------- ------  -------- ---------- ---------- ---------- ----------  ----------
+total        4      0.01       0.04          4         31          0           1
+
+Misses in library cache during parse: 1
+
+Elapsed times include waiting on following events:
+  Event waited on                             Times   Max. Wait  Total Waited
+  ----------------------------------------   Waited  ----------  ------------
+  SQL*Net message to client                       7        0.00          0.00
+  SQL*Net message from client                     7       11.82         51.02
+  SQL*Net break/reset to client                   4        0.00          0.00
+  db file sequential read                         4        0.02          0.03
+
+
+OVERALL TOTALS FOR ALL RECURSIVE STATEMENTS
+
+call     count       cpu    elapsed       disk      query    current        rows
+------- ------  -------- ---------- ---------- ---------- ----------  ----------
+Parse       17      0.00       0.00          0          0          0           0
+Execute     67      0.01       0.01          0          0          0           0
+Fetch      126      0.00       0.00          3        250          0          92
+------- ------  -------- ---------- ---------- ---------- ----------  ----------
+total      210      0.02       0.02          3        250          0          92
+
+Misses in library cache during parse: 10
+Misses in library cache during execute: 10
+
+Elapsed times include waiting on following events:
+  Event waited on                             Times   Max. Wait  Total Waited
+  ----------------------------------------   Waited  ----------  ------------
+  Disk file operations I/O                        1        0.00          0.00
+  db file sequential read                         3        0.00          0.00
+
+    1  user  SQL statements in session.
+   17  internal SQL statements in session.
+   18  SQL statements in session.
+********************************************************************************
+
+
+
+
+
+
+
+
+
+
+************************************************************************************************
+对于10053事件的trace文件，我们只能直接阅读原始的trace文件
+
+经过测试，如果一个SQL语句已经被解析过，那么就不会生成10053的trace文件，但10046的trace文件可以重复生成。
+
+
+oradebug unlimit
+oradebug event 10053 trace name context forever, level 1
+exec our code
+oradebug event 10053 trace name context off
+oradebug tracefile_name
+
+
+
+
+

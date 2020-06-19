@@ -1,0 +1,461 @@
+实例状态
+select instance_name,status from v$instance
+select inst_id,status from gv$instance
+
+连接用户：以用户分组的连接数
+select inst_id,username,count(*)
+from gv$session
+group by inst_id, username
+
+参数查询
+select value from v$parameter where name = 'open_cursors' 默认300 建议改1000
+参数修改
+alter system set undo_retention= 3600 comment='default 900' sid='*' scope=both
+隐含参数
+alter system set "_optimizer_use_feedback"=false scope=spfile
+11.2增加了cardinality feedback基数反馈特性
+
+
+ 会话信息：当前会话数和最高连接会话数
+select sessions_current,sessions_highwater from v$license
+select count(*) from v$session where username is not null 会话数
+select count(*) from v$process 连接数
+
+连接异常
+tnsping cmsgan 连通性   （测试配置的服务名及连通性）
+监听器
+lsnrclt status listener
+lsnrctl status listener_scan1
+lsnrctl service
+监听日志检查
+adrci>show altert
+
+实例异常（连接缓慢，挂起等待）
+
+
+一、信息采集，采集系统的Hang信息，系统状态信息，可以分析 挂起的原因，采用间隔采样，可以用于对比变化，辅助分析。
+sqlplus -prelim /as sysdba
+SQL> oradebug setmypid
+Statement processed.
+SQL> oradebug unlimit
+Statement processed.
+SQL> oradebug hanganalyze 3
+Statement processed.
+SQL> oradebug dump systemstate 266
+Statement processed.
+间隔20s 执行下一次数据采样
+SQL> oradebug hanganalyze 3
+Statement processed.
+SQL> oradebug dump systemstate 266
+Statement processed.
+二、跟踪关闭和启动
+alter session set events '10046 trace name context forever ,level 12';
+shutdown immediate
+
+startup mount
+alter session set events '10046 trace name context forever ,level 12'
+alter database open
+
+关闭10046
+alter session set events ‘10046 trace name context off
+
+获取跟踪文件SQL
+SELECT    a.VALUE
+       || b.symbol
+       || c.instance_name
+       || '_ora_'
+       || d.spid
+       || '.trc' trace_file
+  FROM (SELECT VALUE
+          FROM v$parameter
+         WHERE NAME = 'user_dump_dest') a,
+       (SELECT SUBSTR (VALUE, -6, 1) symbol
+          FROM v$parameter
+         WHERE NAME = 'user_dump_dest') b,
+       (SELECT instance_name
+          FROM v$instance) c,
+       (SELECT spid
+          FROM v$session s, v$process p, v$mystat m
+         WHERE s.paddr = p.addr AND s.SID = m.SID AND m.statistic# = 0) d
+/
+
+
+
+select d.value || '/' || lower(rtrim(i.instance, chr(0))) || '_ora_' ||
+p.spid || '.trc' trace_file_name
+from (select p.spid from sys.v$mystat m, sys.v$session s, sys.v$process p
+where m.statistic# = 1
+and s.sid = m.sid
+and p.addr = s.paddr) p,(select t.instance
+from sys.v$thread t, sys.v$parameter v
+where v.name = 'thread'
+and (v.value = 0 or t.thread# = to_number(v.value))) i,
+(select value from sys.v$parameter where name = 'user_dump_dest') d
+
+安全停库
+alter system checkpoint;
+alter system archive log current;   (archive log是隔开的)
+shutdown immediate
+ 
+强制停库
+shutdown abort
+startup nomount 
+alter database mount 
+alter database open
+
+
+
+日志信息检查
+告警日志
+show parameter background_dump_dest
+$ORACLE_BASE/diag/rdbms/<db_name>/$ORA CLE_SID/trace/alert_$ORACLE_SID.log
+集群日志
+$GRID_HOME/log/<nodename>/alert<nodename>.log
+$GRID_HOME/log/<nodename>/(crsd,cssd,evmd,ohasd)/
+ASM日志
+$GRID_HOME/diag/asm/+asm/<ASM_instance_name>/trace/alert<instance_name>
+
+trace文件检查
+show parameter user_dump_dest
+select * from v$diag_info where name = 'Default Trace File'
+监听日志检查
+adrci>show alert
+集群状态
+crsctl status resource -t
+
+errorstack分析（错误信息不足，进行跟踪和转储信息）
+对orac600错误设置跟踪，并关闭
+alter system set events= '600 trace name errorstack forever,level 10';
+alter system set events= '600 trace name errorstack off';
+##600的错误编码，不一样
+修改：
+alter system set events= '600 trace name errorstack forever,level 3';
+alter system set events '988 trace name errorstack off';
+
+
+errorstack
+诊断事件可以在 Session 级设置，也可以在系统级设置，通常如果要诊断全局错误，最好在系统级设置。
+设置了 ERRORSTACK 事件之后，Oracle 会将出错时的信息记入跟踪文件之中，然后再出现错误时就可以通过跟踪文件进行错误诊断和排查了
+
+举例：ORA-01555
+ALTER SYSTEM SET EVENTS '1555 TRACE NAME ERRORSTACK LEVEL 4';
+
+
+重做日志维护
+redo组和成员
+select * from v$log 查询日志组号，序号，归档是否完成，状态信息
+select * from v$logfile 查询日志组和成员
+
+redo维护
+查看redo切换频率
+echo "########## 6.14 Section ########" >>$logfile
+sqlplus -S / as sysdba <<EOF >>$logfile
+set linesize 120
+select group#,thread#,sequence#,bytes/1024/1024,members,archived,status from v\$log;
+prompt "####### 6.15 #### redo switch frequency"
+set linesize 200
+col Day for a5
+col H00 FOR '999'
+COL H01 FOR '999'
+COL H02 FOR '999'
+col H03 FOR '999'
+COL H04 FOR '999'
+COL H05 FOR '999'
+col H06 FOR '999'
+COL H07 FOR '999'
+COL H08 FOR '999'
+COL H09 FOR '999'
+COL H10 FOR '999'
+col H11 FOR '999'
+COL H12 FOR '999'
+COL H13 FOR '999'
+col H14 FOR '999'
+COL H15 FOR '999'
+COL H16 FOR '999'
+COL H17 FOR '999'
+COL H18 FOR '999'
+col H19 FOR '999'
+COL H20 FOR '999'
+COL H21 FOR '999'
+col H22 FOR '999'
+COL H23 FOR '999'
+
+SELECT SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH:MI:SS'),1,5) Day,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'00',1,0)) H00,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'01',1,0)) H01, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'02',1,0)) H02,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'03',1,0)) H03,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'04',1,0)) H04,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'05',1,0)) H05,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'06',1,0)) H06,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'07',1,0)) H07,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'08',1,0)) H08,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'09',1,0)) H09,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'10',1,0)) H10,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'11',1,0)) H11, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'12',1,0)) H12,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'13',1,0)) H13, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'14',1,0)) H14,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'15',1,0)) H15, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'16',1,0)) H16, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'17',1,0)) H17, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'18',1,0)) H18, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'19',1,0)) H19, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'20',1,0)) H20, 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'21',1,0)) H21,
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'22',1,0)) H22 , 
+       SUM(DECODE(SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH24:MI:SS'),10,2),'23',1,0)) H23, 
+       COUNT(*) TOTAL 
+FROM v\$log_history  a
+   where first_time>=to_char(sysdate-11)
+GROUP BY SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH:MI:SS'),1,5) 
+ORDER BY SUBSTR(TO_CHAR(first_time, 'MM/DD/RR HH:MI:SS'),1,5) DESC;
+exit;
+EOF
+日志切换频繁时
+alter database add logfile  group 10 (/oracle/dbs/log1c.rdo) size 500M;
+alter database add logfile member '/oracle/dbs/log2c.rdo' to group 10;
+状态为inactive的日志及日志组的删除
+alter database drop logfile group 10;
+alter database drop logfile member '/oracle/dbs/redo03.log'
+
+归档维护
+sql>archive log list
+startup mount 
+alter database archivelog;
+
+执行归档
+alter system archive log current; 归档并切换
+alter system switch logfile 切换
+调整归档路径
+alter system set log_archive_dest_2= 'location' sid='dingsw'
+
+
+空间信息
+select * from sys.sm$ts_free
+select * from sys.sm$ts_used
+文件信息
+select * from dba_data_file
+文件维护
+alter tablespace &tbs_name add datafile  '/&path' size 500m;
+alter database datafile'/&path' resize 1000m
+
+
+锁闩检查
+锁信息
+select * from v$lock where type not in ('MR','AE') 
+查看锁会话ID，类型，持有时间，其中block>1则阻塞了其它会话
+锁故障排查
+查询阻塞会话 
+select sid,sql_id,status,blocking_session from v$session 
+where sid in (select session_id from v$locked_object)
+通过sql_id查看sql文本
+select sql_id,sql_text from v$sqltext where sql_id = '$sql_id' order by piece;
+查看阻塞对象
+select owner,object_name,object_type from dba_objects 
+where object_id in (select object_from v$locked_object)
+杀死阻塞会话
+alter session kill session 'sid,serial#'
+杀死系统进程
+select pro.spid,pro.program
+from v$session ses,v$process pro
+where ses.paddr=pro.addr
+and ses.sid=&sid
+ kill -9 spid
+闩检查
+select * from v$latch order by 2
+闩使用检查
+select * from v$latch_children where name = 'cache buffers chains'
+通过latchd地址，可以找到latch守护的X$BH中相关的buffer
+select * from x$bh where hladdr in (select addr from v$latch_children where addr='&addr')
+
+等待统计信息
+等待时间查询
+select * from v$session_wait order by 3
+top10等待事件
+select * from (select * from v$system_event where WAIT_CLASS <>'Idle' order by TIME_WAITED desc) where rownum < = 10
+会话统计信息
+select s.sid,s.statistic#,n.name,s.value
+from v$sesstat s ,v$statname n 
+where s.STATISTIC# = n.STATISTIC#
+and n.name ='redo size'
+and sid= '&sid'
+系统级统计信息
+select  *
+ from v$sysstat
+where name = 'redo size'
+
+
+对象检查
+表信息数据
+select * from 
+(select owner,table_name,num_rows from dba_tables order by num_rows desc nulls last)
+where rownum < 11
+表统计信息
+select table_name,last_analyzed from dba_tab_statistics where table_name = '&table_name'
+索引信息数据
+select * from (select index_name,num_rows,leaf_blocks,clustering_factor from dba_indexes order by 4  desc nulls last)
+where rownum < 11
+包括叶块数和聚簇因子，聚簇因子接近num_rows说明索引效率不高
+分区对象检查
+select table_name,partitioning_type,partition_count,status from dba_part_tables
+select table_name,partition_name,high_value from dba_tab_partitions where rownum < 11
+结构信息 SQLPLUS中执行
+set long 12000
+select dbms_metadata.get_dll('&obj_type','&obj_name','&user') from dual  大写
+
+统计信息收集
+exec dbms_stats.gather_table_stats(ownname=>'SCOTT',tabname=>'EMP');
+exec dbms_stats.gather_index_stats(ownname=>'SCOTT',indname=>'EMP');
+约束信息
+select constraint_name,constraint_type from dba_constraints where table_name = 'EMP'
+ 失效对象查询
+select owner,object_name,object_type,status from dba_objects where status <>'VALID'
+闪回查询
+select * from &table as of timestamp to_timestamp('2017-0-10-12 12:30:00','yyyy-mm-dd hh24:mi:ss')
+select * from &table as of scn &scn
+flashback table &oldtable to before drop rename to = &newname
+
+
+AWR报告检查
+sql>@?/rdbms/admin/awrrpt.sql 本地awr
+       @?/rdbms/admin/awrrpi    指定实例awr
+       @?/rdbms/admin/awrddrpt  对比报告
+       @?/rdbms/admin/awrddrpi 指定实例对比
+
+AWR信息提取
+@?/rdbms/admin/awrextr
+AWR信息加载
+@?/rdbms/admin/awrload
+
+
+
+SQL报告检查
+执行计划；
+explain plan for sql...
+select * from table(dbms_xplan.display);
+
+set autotrace traceonly explain
+sql...
+set autotrace off
+
+select * from table(dbms_xplan.display_cursor(&sql_id,null,advanced))
+
+10053事件跟踪
+alter session set tracefile_identifile='10053'
+alter session set events '10053 trace name context forever,level 1'
+sql...
+alter session set events '10053 trace name context off'
+
+绑定变量
+select dbms_sqltune.extract_bind(bind_data,1).value_string from wrh$_sqlstat where sql_id='&sql_id'
+
+sql报告
+@?/dbms/admin/awrsqrpt
+@?/dbms/admin/awrsqrpi
+指定SQL的监控报告
+select dbms_sqltune.report_sql_monitor(sql_id =>'&sql_id',report_level=>'ALL',TYPE=>'ACTIVE') as report from dual;
+
+定时任务检查
+用户定时任务
+select job,log_user,last_date,next_date,interval,broken,failures from dba_jobs
+
+系统定时任务
+set lines 300 pages 300
+col state for a15
+col START_DATE for a20
+col LAST_START_DATE for a20
+col REPEAT_INTERVAL for a20
+select job_name,state,enabled,start_date,last_start_date,repeat_interval from dba_scheduler_jobs;
+
+
+dba_scheduler_job_run_details;
+
+系统定时任务 11g
+select client_name,mean_job_duration from dba_autotask_client
+查看自动收集任务及状态
+select client_name,status from Dba_Autotask_Client where client_name='auto optimizer stats collection';
+查看自动收集任务历史执行状态
+set lines 300 pages 300
+col client_name for a35
+col window_name for a20
+SELECT client_name, window_name, jobs_created, jobs_started, jobs_completed FROM dba_autotask_client_history WHERE client_name like '%stats%';
+
+
+启停统计信息任务  10g
+exec dbms_scheduler.disable ('SYS.GATHER_STATS_JOB');
+exec dbms_scheduler.enable('SYS.GATHER_STATS_JOB')
+
+启停统计信息任务 11g
+exec dbms_auto_task_admin.disable(client_name=>'auto optimizer stats collection',operation=>NULL,window_name=>NULL)
+exec dbms_auto_task_admin.enable(client_name=>'auto optimizer stats collection,operation=NULL,window_name=NULL')
+
+备份
+exp/imp用户模式
+exp dsw/dsw file=dsw.dmp log=dsw.log owner=ding
+imp dsw/dsw file=dsw.dmp log=dsw.log fromuser=ding touser=guo
+expdp/impdp用户模式
+expdp system/dsw directory=dsw_dir dumpfile=dsw.dmp schemas=scott
+impdp system/dsw directory=dsw_dir dumpfile=dsw.dmp schemas=scott  remap_schema=scott:dsw remap_tablespace=users:dsw
+expdp/impdp 表模式
+expdp scott/dsw directory=dsw.dir dumpfile=table.dmp tables=emp,dept 
+impdp scott/dsw directory=dsw.dir dumpfile=table.dmp tables=emp.dept
+物理备份检查
+select backup_type,start_time,completion_time,block_size from v$backup_set
+控制文件
+自动备份rman>show all
+                         configure controlfile
+                          autobackup on
+手动备份
+rman>backup current controlfile
+sql>alter database backup controlfile to '/tmp/control.bak'
+
+
+转储控制文件	
+sql>alter database backup controlfile to trace
+sql>alter session set events 'immediate trace name controlf level 8 
+
+转储数据文件头（将把所有数据文件的头部转储出来）
+alter session set events 'immediate trace name file_hdrs level 3'
+或者
+SQL> oradebug setmypid
+SQL> oradebug dump file_hdrs 3
+
+转储日志文件图
+alter session set events 'immediate trace name redohdr level 3';
+或oradebug dump redohdr 3
+SQL> oradebug setmypid
+SQL> oradebug dump redohdr 3
+
+tracefile 路径
+select
+d.value||'/'||lower(rtrim(i.instance, chr(0)))||'_ora_'||p.spid||'.trc' trace_file_name
+from
+( select p.spid
+from sys.v$mystat m,sys.v$session s,sys.v$process p
+where m.statistic# = 1 and s.sid = m.sid and p.addr = s.paddr) p,
+( select t.instance from sys.v$thread t,sys.v$parameter v
+where v.name = 'thread' and (v.value = 0 or t.thread# = to_number(v.value))) i,
+( select value from sys.v$parameter where name = 'user_dump_dest') d
+/
+
+
+
+
+rman备份数据库
+rman>backup format '/data/%U' database plus archivelog
+
+
+基本信息检查
+selece * from v$version
+select  * from v$option 
+容量检查
+select group_number,mount_status,total_mb,free_mb from v$asm_disk
+select group_number,name,state,total_mb,free_mb from v$asm_diskgroup
+asmcmd>lsdg
+PSU检查
+select * from dba_registry_history
+查询数据库的版本升级历史信息
+$ $ORACLE_HOME/Opatch/opatch lsinventory
+查询数据库补丁历史信息
+opatch lsinventory -detail -oh $ORACLE_HOME
